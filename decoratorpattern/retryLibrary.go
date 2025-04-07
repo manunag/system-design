@@ -36,22 +36,8 @@ func limitedNextEven(seq *even, limit int) func() int {
 	}
 }
 
-func (e *even) retry(a func() error, tries int) (interface{}, error) {
-	wrappedFunc := func() error {
-		fmt.Println("sleep", e.Number, "seconds")
-
-		time.Sleep(time.Duration(e.Number) * time.Second)
-		e.next()
-
-		return a()
-	}
-
-	err := e.RetryInterface.retry(wrappedFunc, tries)
-	if err != nil {
-		return "failure", err
-	}
-
-	return "success", nil
+func (e *even) retry(fun func() error, tries int) (interface{}, error) {
+	return retry(e, e.RetryInterface, fun, tries)
 }
 
 func newEven(RetryInterface RetryInterface) sequence {
@@ -84,22 +70,8 @@ func limitedNextOdd(seq *odd, limit int) func() int {
 	}
 }
 
-func (o *odd) retry(a func() error, tries int) (interface{}, error) {
-	wrappedFunc := func() error {
-		fmt.Println("sleep", o.Number, "seconds")
-
-		time.Sleep(time.Duration(o.Number) * time.Second)
-		o.next()
-
-		return a()
-	}
-
-	err := o.RetryInterface.retry(wrappedFunc, tries)
-	if err != nil {
-		return "failure", err
-	}
-
-	return "success", nil
+func (o *odd) retry(fun func() error, tries int) (interface{}, error) {
+	return retry(o, o.RetryInterface, fun, tries)
 }
 
 func newOdd(RetryInterface RetryInterface) sequence {
@@ -131,22 +103,8 @@ func (f *fibonacci) next() int {
 	return f.Previous
 }
 
-func (f *fibonacci) retry(a func() error, tries int) (interface{}, error) {
-	wrappedFunc := func() error {
-		fmt.Println("sleep", f.Number, "seconds")
-
-		time.Sleep(time.Duration(f.Number) * time.Second)
-		f.next()
-
-		return a()
-	}
-
-	err := f.RetryInterface.retry(wrappedFunc, tries)
-	if err != nil {
-		return "failure", err
-	}
-
-	return "success", nil
+func (f *fibonacci) retry(fun func() error, tries int) (interface{}, error) {
+	return retry(f, f.RetryInterface, fun, tries)
 }
 
 type RetryInterface interface {
@@ -159,10 +117,10 @@ func newRetrier() *retrier {
 	return &retrier{}
 }
 
-func (r *retrier) retry(a func() error, tries int) error {
+func (r *retrier) retry(fun func() error, tries int) error {
 	var err error
 	for i := 0; i < tries; i++ {
-		err = a()
+		err = fun()
 		if err == nil {
 			return nil
 		}
@@ -174,26 +132,44 @@ func (r *retrier) retry(a func() error, tries int) error {
 	return err
 }
 
+func retry(seq sequence, retryInterface RetryInterface, fun func() error, tries int) (interface{}, error) {
+	wrappedFunc := func() error {
+		current := seq.next()
+		fmt.Println("sleep", current, "seconds")
+
+		time.Sleep(time.Duration(current) * time.Second)
+
+		return fun()
+	}
+
+	err := retryInterface.retry(wrappedFunc, tries)
+	if err != nil {
+		return "failure", err
+	}
+
+	return "success", nil
+}
+
 func main() {
 	retryBase := newRetrier()
 	fibDec := newFibonacci(retryBase)
 	evenDec := newEven(retryBase)
 	oddDec := newOdd(retryBase)
 
-	a := func() error {
+	fun := func() error {
 		fmt.Println("My function that does nothing :)")
 		return errors.New("throwing error for testing")
 	}
 
 	fmt.Println("\n\n Base retry")
-	fmt.Println(retryBase.retry(a, 5))
+	fmt.Println(retryBase.retry(fun, 5))
 
 	fmt.Println("\n\n Fibonacci retry")
-	fmt.Println(fibDec.retry(a, 5))
+	fmt.Println(fibDec.retry(fun, 5))
 
 	fmt.Println("\n\n Even retry")
-	fmt.Println(evenDec.retry(a, 5))
+	fmt.Println(evenDec.retry(fun, 5))
 
 	fmt.Println("\n\n Odd retry")
-	fmt.Println(oddDec.retry(a, 5))
+	fmt.Println(oddDec.retry(fun, 5))
 }
